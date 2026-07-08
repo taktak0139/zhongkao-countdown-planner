@@ -1,0 +1,68 @@
+const DIAGNOSIS_DATA = {
+  students: [
+    { id: "S001", name: "李悦嘉" },
+    { id: "S002", name: "李承岳" },
+  ],
+  papers: [
+    {
+      id: "PAPER-MATH-001",
+      subject: "数学",
+      name: "数学第一轮诊断卷",
+      totalScore: 100,
+      questions: [
+        { no: "1", type: "选择题", score: 10, difficulty: "基础", knowledgeId: "M001", knowledge: "有理数混合运算", prompt: "计算：-3+5×(-2) 的结果是（ ）。", options: ["A. -13", "B. -7", "C. 7", "D. 13"], answer: "A", rubric: "选 A 得 10 分。", grading: "objective" },
+        { no: "2", type: "选择题", score: 10, difficulty: "基础", knowledgeId: "M002", knowledge: "绝对值", prompt: "若 |x|=3，则 x 的值是（ ）。", options: ["A. 3", "B. -3", "C. ±3", "D. 0"], answer: "C", rubric: "选 C 得 10 分。", grading: "objective" },
+        { no: "3", type: "填空题", score: 10, difficulty: "基础", knowledgeId: "M106", knowledge: "合并同类项", prompt: "化简：3a+2a-5a=____。", answer: "0", rubric: "答案为 0 或 0a 得 10 分。", grading: "objective" },
+        { no: "4", type: "解答题", score: 10, difficulty: "基础", knowledgeId: "M109", knowledge: "一元一次方程", prompt: "解方程：2x+5=13。请写出主要步骤。", answer: "x=4", rubric: "移项正确 4 分，化系数为 1 正确 4 分，答案 x=4 得 2 分。", grading: "subjective", keywords: ["2x=8", "x=4"] },
+        { no: "5", type: "解答题", score: 10, difficulty: "中档", knowledgeId: "M203", knowledge: "因式分解", prompt: "分解因式：x²-9。", answer: "(x+3)(x-3)", rubric: "识别平方差公式 4 分，写出 (x+3)(x-3) 得 6 分。", grading: "subjective", keywords: ["平方差", "x+3", "x-3"] },
+        { no: "6", type: "解答题", score: 10, difficulty: "中档", knowledgeId: "M303", knowledge: "全等三角形", prompt: "已知 AB=DE，AC=DF，∠A=∠D，说明 △ABC 与 △DEF 全等的依据。", answer: "SAS", rubric: "指出两边及夹角对应相等 6 分，写出 SAS 判定 4 分。", grading: "subjective", keywords: ["两边", "夹角", "SAS"] },
+        { no: "7", type: "解答题", score: 10, difficulty: "中档", knowledgeId: "M403", knowledge: "勾股定理", prompt: "直角三角形两直角边分别为 6 和 8，求斜边长。", answer: "10", rubric: "列出 6²+8²=斜边² 得 5 分，算出 10 得 5 分。", grading: "subjective", keywords: ["6", "8", "10"] },
+        { no: "8", type: "解答题", score: 10, difficulty: "中档", knowledgeId: "M407", knowledge: "一次函数", prompt: "一次函数 y=2x-1，当 x=3 时，y 的值是多少？", answer: "5", rubric: "代入 x=3 得 5 分，计算 y=5 得 5 分。", grading: "subjective", keywords: ["2×3", "5"] },
+        { no: "9", type: "应用题", score: 10, difficulty: "综合", knowledgeId: "M409", knowledge: "一次函数应用", prompt: "某车起步价 10 元，每公里 2 元。写出行驶 x 公里的费用 y 与 x 的关系式。", answer: "y=2x+10", rubric: "识别固定费用 10 元 4 分，识别每公里 2 元 4 分，写出 y=2x+10 得 2 分。", grading: "subjective", keywords: ["10", "2x", "y=2x+10"] },
+        { no: "10", type: "综合题", score: 10, difficulty: "综合", knowledgeId: "M501", knowledge: "一元二次方程基础", prompt: "解方程：x²-5x+6=0。", answer: "x=2 或 x=3", rubric: "正确因式分解 5 分，写出两个解 5 分。", grading: "subjective", keywords: ["x-2", "x-3", "2", "3"] },
+      ],
+    },
+    {
+      id: "PAPER-CHN-001",
+      subject: "语文",
+      name: "语文第一轮诊断卷",
+      totalScore: 100,
+      questions: [
+        { no: "1", type: "选择题", score: 10, difficulty: "基础", knowledgeId: "Y101", knowledge: "字音字形", prompt: "下列词语书写完全正确的一项是（ ）。", options: ["A. 震憾", "B. 奥秘", "C. 追朔", "D. 烦燥"], answer: "B", rubric: "选 B 得 10 分。", grading: "objective" },
+        { no: "2", type: "填空题", score: 10, difficulty: "基础", knowledgeId: "Y104", knowledge: "古诗文默写", prompt: "补写句子：会当凌绝顶，____。", answer: "一览众山小", rubric: "完全正确得 10 分，错别字每处扣 2 分。", grading: "subjective", keywords: ["一览众山小"] },
+        { no: "3", type: "阅读题", score: 20, difficulty: "中档", knowledgeId: "Y201", knowledge: "信息提取", prompt: "阅读短文：清晨，操场上的跑道还带着潮气。小林没有像往常一样抱怨训练辛苦，而是默默完成了最后一圈。教练说，真正的进步常常发生在没人催促的时候。问题：这段文字主要表现了小林怎样的变化？", answer: "从抱怨训练到主动坚持，表现出自律和成长。", rubric: "概括变化 8 分，指出主动坚持/自律 8 分，语言通顺 4 分。", grading: "subjective", keywords: ["抱怨", "坚持", "自律", "成长"] },
+        { no: "4", type: "阅读题", score: 20, difficulty: "中档", knowledgeId: "Y401", knowledge: "句子赏析", prompt: "赏析句子：跑道还带着潮气，像把清晨的安静铺在脚下。", answer: "运用比喻，写出清晨环境安静，也烘托人物沉下心训练的状态。", rubric: "指出修辞 6 分，分析环境特点 6 分，联系人物状态 6 分，表达 2 分。", grading: "subjective", keywords: ["比喻", "清晨", "安静", "训练"] },
+        { no: "5", type: "作文题", score: 40, difficulty: "综合", knowledgeId: "Y105", knowledge: "写作表达", prompt: "请以“这个暑假，我想改变的一件事”为题，写一段不少于 300 字的短文。", answer: "围绕改变目标、原因、行动计划和自我反思展开。", rubric: "中心明确 10 分，内容具体 12 分，结构清楚 8 分，语言通顺 8 分，书写规范 2 分。", grading: "subjective", keywords: ["改变", "原因", "计划", "行动", "反思"] },
+      ],
+    },
+    {
+      id: "PAPER-ENG-001",
+      subject: "英语",
+      name: "英语第一轮诊断卷",
+      totalScore: 100,
+      questions: [
+        { no: "1", type: "选择题", score: 10, difficulty: "基础", knowledgeId: "E103", knowledge: "一般现在时", prompt: "He usually ____ to school by bike.", options: ["A. go", "B. goes", "C. went", "D. going"], answer: "B", rubric: "选 B 得 10 分。", grading: "objective" },
+        { no: "2", type: "选择题", score: 10, difficulty: "基础", knowledgeId: "E202", knowledge: "一般过去时", prompt: "I ____ a film yesterday.", options: ["A. watch", "B. watches", "C. watched", "D. watching"], answer: "C", rubric: "选 C 得 10 分。", grading: "objective" },
+        { no: "3", type: "选择题", score: 10, difficulty: "中档", knowledgeId: "E404", knowledge: "宾语从句", prompt: "Could you tell me ____?", options: ["A. where is the library", "B. where the library is", "C. where was the library", "D. where the library"], answer: "B", rubric: "选 B 得 10 分。", grading: "objective" },
+        { no: "4", type: "阅读理解", score: 20, difficulty: "中档", knowledgeId: "E105", knowledge: "阅读信息提取", prompt: "Read: Tom planned to read for thirty minutes every morning. At first, he often forgot it. Then he put a book beside his bed and made a checklist. Two weeks later, reading became easier for him. Question: What helped Tom keep reading?", answer: "He put a book beside his bed and made a checklist.", rubric: "提到 book beside his bed 得 8 分，提到 checklist 得 8 分，表达完整得 4 分。", grading: "subjective", keywords: ["book", "bed", "checklist"] },
+        { no: "5", type: "翻译题", score: 20, difficulty: "中档", knowledgeId: "E203", knowledge: "句子翻译", prompt: "翻译：如果你每天复习错题，你会取得进步。", answer: "If you review your mistakes every day, you will make progress.", rubric: "if 条件句 6 分，review mistakes 6 分，every day 4 分，make progress 4 分。", grading: "subjective", keywords: ["if", "review", "mistakes", "every day", "progress"] },
+        { no: "6", type: "写作题", score: 30, difficulty: "综合", knowledgeId: "E406", knowledge: "英语写作", prompt: "Write at least 60 words about your summer study plan.", answer: "A clear summer study plan with subjects, time arrangement and goals.", rubric: "主题明确 8 分，计划具体 10 分，语法基本正确 8 分，词汇表达 4 分。", grading: "subjective", keywords: ["summer", "study", "plan", "goal", "time"] },
+      ],
+    },
+    {
+      id: "PAPER-PHY-001",
+      subject: "物理",
+      name: "物理第一轮诊断卷",
+      totalScore: 100,
+      questions: [
+        { no: "1", type: "选择题", score: 10, difficulty: "基础", knowledgeId: "P002", knowledge: "速度公式", prompt: "物体 10 秒通过 50 米，速度是（ ）。", options: ["A. 2 m/s", "B. 5 m/s", "C. 10 m/s", "D. 50 m/s"], answer: "B", rubric: "选 B 得 10 分。", grading: "objective" },
+        { no: "2", type: "选择题", score: 10, difficulty: "基础", knowledgeId: "P004", knowledge: "声音传播", prompt: "声音在真空中（ ）。", options: ["A. 能传播", "B. 不能传播", "C. 传播最快", "D. 传播最慢"], answer: "B", rubric: "选 B 得 10 分。", grading: "objective" },
+        { no: "3", type: "选择题", score: 10, difficulty: "基础", knowledgeId: "P106", knowledge: "平面镜成像", prompt: "平面镜成像的特点是（ ）。", options: ["A. 实像", "B. 像比物大", "C. 像与物等大", "D. 像在镜前"], answer: "C", rubric: "选 C 得 10 分。", grading: "objective" },
+        { no: "4", type: "计算题", score: 15, difficulty: "中档", knowledgeId: "P205", knowledge: "压强计算", prompt: "一个物体对地面的压力为 100N，受力面积为 0.5m²，求压强。", answer: "200Pa", rubric: "写出 p=F/S 得 5 分，代入 100/0.5 得 5 分，结果 200Pa 得 5 分。", grading: "subjective", keywords: ["p=F/S", "100", "0.5", "200"] },
+        { no: "5", type: "计算题", score: 15, difficulty: "中档", knowledgeId: "P301", knowledge: "功的计算", prompt: "用 20N 的力使物体沿力的方向移动 3m，求这个力做的功。", answer: "60J", rubric: "写出 W=Fs 得 5 分，代入 20×3 得 5 分，结果 60J 得 5 分。", grading: "subjective", keywords: ["W=Fs", "20", "3", "60"] },
+        { no: "6", type: "实验题", score: 20, difficulty: "综合", knowledgeId: "P403", knowledge: "欧姆定律实验", prompt: "在探究电流与电压关系的实验中，为什么要保持电阻不变？", answer: "为了控制变量，只研究电压变化对电流的影响。", rubric: "指出控制变量 10 分，说明只研究电压对电流影响 10 分。", grading: "subjective", keywords: ["控制变量", "电阻不变", "电压", "电流"] },
+        { no: "7", type: "综合题", score: 20, difficulty: "综合", knowledgeId: "P404", knowledge: "电功率", prompt: "某用电器两端电压 220V，电流 0.5A，求电功率，并说明单位。", answer: "110W", rubric: "写出 P=UI 得 6 分，代入 220×0.5 得 6 分，结果 110W 得 6 分，单位正确 2 分。", grading: "subjective", keywords: ["P=UI", "220", "0.5", "110", "W"] },
+      ],
+    },
+  ],
+};

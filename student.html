@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>学生诊断测试</title>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body data-role="student">
+  <header class="app-header">
+    <div class="brand"><span class="brand-mark">诊</span><div><p>2026 暑期复盘</p><h1>学生诊断测试</h1></div></div>
+    <div class="live-metrics"><div><span>当前题号</span><strong id="currentQuestionText">第 1 题</strong></div><div><span>用时</span><strong id="timerText">00:00</strong></div><div><span>保存状态</span><strong id="storageStatus">未开始</strong></div></div>
+  </header>
+  <nav class="fixed-controls">
+    <label>学生<select id="studentSelect"></select></label>
+    <label>学科<select id="subjectSelect"></select></label>
+    <label>试卷<select id="paperSelect"></select></label>
+    <button id="startBtn" type="button">开始测试</button>
+  </nav>
+  <main class="shell">
+    <section class="summary-strip"><div><span>试卷</span><strong id="paperNameText">数学第一轮诊断卷</strong></div><div><span>题量</span><strong id="questionCountText">0 题</strong></div><div><span>总分</span><strong id="totalScoreText">100 分</strong></div><div><span>人工阅卷</span><strong id="manualCountText">0 题</strong></div></section>
+    <section class="mode-tabs" aria-label="操作模式"><button id="studentModeBtn" type="button" class="active">学生答题</button><button id="reviewModeBtn" type="button">家长阅卷</button></section>
+    <section id="studentPanel" class="work-panel"><div class="panel-head"><div><h2>学生答题区</h2><p>页面已内置完整题目，提交后自动阅卷。</p></div><div class="actions"><button id="saveBtn" type="button">保存答案</button><button id="submitBtn" type="button">提交并AI阅卷</button><button id="exportBtn" type="button">导出答题CSV</button></div></div><div id="questionList" class="question-list"></div></section>
+    <section id="studentResult" class="work-panel hidden"></section>
+    <section id="reviewPanel" class="work-panel hidden"><div class="panel-head"><div><h2>家长阅卷区</h2><p>录入得分、错误类型和错误原因，用于导出薄弱点分析。</p></div><div class="actions"><button id="saveReviewBtn" type="button">保存阅卷</button><button id="exportReviewBtn" type="button">导出阅卷CSV</button><button id="exportSummaryBtn" type="button">导出薄弱点CSV</button></div></div><div id="reviewList" class="question-list"></div></section>
+    <button id="clearBtn" type="button" class="danger">清空当前学生当前试卷数据</button>
+  </main>
+  <script src="./data.js"></script>
+  <script src="./app.js"></script>
+</body>
+</html>
