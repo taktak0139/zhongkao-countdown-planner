@@ -1,0 +1,76 @@
+name: 使用反馈 / 产品建议
+description: 适合家长、老师、学生反馈使用体验和改进建议
+title: "[反馈] "
+labels: ["feedback"]
+body:
+  - type: dropdown
+    id: role
+    attributes:
+      label: 你的身份
+      options:
+        - 家长
+        - 学生
+        - 老师
+        - 教育工作者
+        - 开发者
+        - 其他
+    validations:
+      required: true
+
+  - type: dropdown
+    id: feedback_type
+    attributes:
+      label: 反馈类型
+      options:
+        - 学情诊断
+        - 试题内容
+        - 知识点边界
+        - 学习规划
+        - 家长驾驶舱
+        - 视频资源
+        - 页面体验
+        - 其他
+    validations:
+      required: true
+
+  - type: dropdown
+    id: subject
+    attributes:
+      label: 学科
+      options:
+        - 数学
+        - 英语
+        - 物理
+        - 其他
+    validations:
+      required: true
+
+  - type: dropdown
+    id: textbook_version
+    attributes:
+      label: 教材版本
+      options:
+        - 苏教版
+        - 人教版
+        - 其他
+        - 不确定
+    validations:
+      required: true
+
+  - type: textarea
+    id: feedback
+    attributes:
+      label: 具体反馈内容
+      description: 请尽量描述清楚学生年级、学科、教材版本、问题现象。
+      placeholder: 例如：八年级学生在物理诊断中遇到了尚未学过的电学内容，感觉超出当前学习范围。
+    validations:
+      required: true
+
+  - type: textarea
+    id: improvement
+    attributes:
+      label: 你希望如何改进
+      description: 选填。可以写你期待的调整方向、页面展示方式或学习安排。
+      placeholder: 例如：希望物理测试先从八年级已学内容开始，初三电学暂时不要进入第一轮诊断。
+    validations:
+      required: false

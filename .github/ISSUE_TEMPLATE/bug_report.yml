@@ -1,0 +1,73 @@
+name: Bug 报告
+description: 页面错误、数据丢失、功能异常等问题
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: dropdown
+    id: page
+    attributes:
+      label: 问题页面
+      options:
+        - 首页
+        - 学生端
+        - 家长端
+        - 诊断测试
+        - 历史试卷
+        - 其他
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: 问题描述
+      description: 请简要说明你遇到的问题。
+      placeholder: 例如：点击提交后没有显示 AI 阅卷结果。
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      description: 请按顺序写出如何触发这个问题。
+      placeholder: |
+        1. 打开 student.html
+        2. 选择学生和学科
+        3. 点击开始测试
+        4. 填写答案并提交
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望结果
+      placeholder: 例如：提交后应该显示总分、每题得分、正确答案和解析。
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际结果
+      placeholder: 例如：页面没有变化，也没有错误提示。
+    validations:
+      required: true
+
+  - type: input
+    id: environment
+    attributes:
+      label: 浏览器和设备
+      description: 选填。请填写浏览器、设备和系统版本。
+      placeholder: 例如：iPad Safari / Mac Chrome / Windows Edge
+    validations:
+      required: false
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: 截图或补充说明
+      description: 选填。可以粘贴截图、错误提示或其他上下文。
+    validations:
+      required: false
