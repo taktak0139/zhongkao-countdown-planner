@@ -5,8 +5,10 @@ from collections import Counter, defaultdict
 from pathlib import Path
 
 
-TARGET = Path("/Users/apple/作业/03_学生档案/学生暑期任务计划.csv")
-ABILITY = Path("/Users/apple/作业/03_学生档案/学生能力库.csv")
+BASE_DIR = Path(__file__).resolve().parent
+DATA_DIR = BASE_DIR / "data"
+TARGET = DATA_DIR / "学生暑期任务计划.csv"
+ABILITY = DATA_DIR / "学生能力库.csv"
 
 STUDENTS = [("S001", "李悦嘉"), ("S002", "李承岳")]
 WEEKDAYS = ["周一", "周二", "周三", "周四", "周五", "周六"]
@@ -94,9 +96,14 @@ KNOWLEDGE = {
         ("P208", "浮力"),
         ("P301", "功的计算"),
         ("P302", "功率计算"),
-        ("P403", "欧姆定律"),
-        ("P404", "电功率"),
     ],
+}
+
+EXCLUDED_KNOWLEDGE = {
+    "物理": {
+        "P403": "欧姆定律属于初三电学内容，超出初二下学期结束边界。",
+        "P404": "电功率属于初三电学内容，超出初二下学期结束边界。",
+    }
 }
 
 STAGE_NAMES = {
@@ -149,7 +156,8 @@ def weak_pool(student_id: str, student_name: str, mastered: set[tuple[str, str, 
 
 
 def next_item(subject: str, cursors: dict[str, int]) -> tuple[str, str]:
-    items = KNOWLEDGE[subject]
+    excluded = EXCLUDED_KNOWLEDGE.get(subject, {})
+    items = [item for item in KNOWLEDGE[subject] if item[0] not in excluded]
     item = items[cursors[subject] % len(items)]
     cursors[subject] += 1
     return item

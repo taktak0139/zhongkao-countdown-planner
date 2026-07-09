@@ -7,11 +7,12 @@ from datetime import datetime
 from urllib.parse import quote
 
 
-DATA_ROOT = Path("/Users/apple/作业")
-ABILITY_PATH = DATA_ROOT / "03_学生档案" / "学生能力库.csv"
-VIDEO_PATH = DATA_ROOT / "06_视频资源库" / "薄弱知识点视频推荐.csv"
-PLAN_PATH = DATA_ROOT / "03_学生档案" / "学生暑期任务计划.csv"
-BUDGET_PATH = DATA_ROOT / "03_学生档案" / "学习预算设置.csv"
+BASE_DIR = Path(__file__).resolve().parent
+DATA_ROOT = BASE_DIR / "data"
+ABILITY_PATH = DATA_ROOT / "学生能力库.csv"
+VIDEO_PATH = DATA_ROOT / "薄弱知识点视频推荐.csv"
+PLAN_PATH = DATA_ROOT / "学生暑期任务计划.csv"
+BUDGET_PATH = DATA_ROOT / "学习预算设置.csv"
 DAILY_FILTER_TYPES = {"日常测试", "专项训练"}
 FULL_TEST_TYPES = {"月考", "终考", "综合模拟", "阶段大测"}
 PLAN_HEADERS = ["日期", "周次", "星期", "学生", "任务类型", "学科", "知识点ID", "知识点", "阶段", "45分钟任务内容", "是否主线任务", "是否补弱任务", "是否允许跳过", "任务来源", "预计时长"]
@@ -52,7 +53,9 @@ def grade(payload):
     items = []
     total = 0
     weak = []
-    for q in paper["questions"]:
+    questions = available_questions(paper)
+    paper_total = sum(int(q.get("score", 0) or 0) for q in questions)
+    for q in questions:
         raw_answer = answers.get(q["no"], "")
         ans = normalize(raw_answer)
         full = int(q["score"])
@@ -90,6 +93,12 @@ def grade(payload):
             "bilibiliLink": bilibili_link(paper["subject"], q["knowledge"]),
             "publicCourseKeyword": public_course_keyword(paper["subject"], q["knowledge"]),
             "publicCourseLink": public_course_link(paper["subject"], q["knowledge"]),
+            "subject": paper["subject"],
+            "difficultyLevel": difficulty_level(q),
+            "gradeScope": q.get("grade_scope", "初二升初三暑期"),
+            "learnedUntil": q.get("learned_until", "初二下学期结束"),
+            "isAvailableForGrade8Summer": q.get("is_available_for_grade8_summer", True) is not False,
+            **resource_for(paper["subject"], q["knowledge"]),
         })
     weak_text = "、".join(dict.fromkeys(weak)) or "暂无明显薄弱点"
     result = {
@@ -98,7 +107,7 @@ def grade(payload):
         "paperId": paper["id"],
         "subject": paper["subject"],
         "totalScore": total,
-        "paperTotal": paper["totalScore"],
+        "paperTotal": paper_total,
         "elapsedSeconds": elapsed_seconds,
         "items": items,
         "todayTask": f"优先复盘：{weak_text}。",
@@ -107,6 +116,21 @@ def grade(payload):
     }
     persist_learning_assets(result)
     return result
+
+
+def difficulty_level(question):
+    raw = question.get("difficulty_level")
+    if raw is not None:
+        try:
+            return int(raw)
+        except (TypeError, ValueError):
+            pass
+    return {"基础": 1, "中档": 2, "综合": 3}.get(question.get("difficulty"), 4)
+
+
+def available_questions(paper):
+    questions = [q for q in paper.get("questions", []) if q.get("is_available_for_grade8_summer", True) is not False]
+    return sorted(questions, key=lambda q: (difficulty_level(q), int(q["no"]) if str(q["no"]).isdigit() else 999))
 
 
 def build_explanation(q):
@@ -135,15 +159,27 @@ def mastery(score, full):
 
 
 def bilibili_link(subject, knowledge):
-    return "https://search.bilibili.com/all?keyword=" + quote(f"初中 {subject} {knowledge}")
+    return "https://search.bilibili.com/all?keyword=" + quote(f"苏教版 八年级 初中 {subject} {knowledge}")
 
 
 def public_course_keyword(subject, knowledge):
-    return f"初中{subject}{knowledge}"
+    return f"苏教版 八年级 初中 {subject} {knowledge}"
 
 
 def public_course_link(subject, knowledge):
     return "https://basic.smartedu.cn/syncClassroom?keyword=" + quote(public_course_keyword(subject, knowledge))
+
+
+def resource_for(subject, knowledge):
+    return {
+        "textbookVersion": "苏教版",
+        "resourceGrade": "八年级",
+        "resourceTitle": f"苏教版八年级{subject}：{knowledge}",
+        "resourceUrl": "",
+        "resourceSource": "待补充",
+        "resourceStatus": "pending_review",
+        "resourceNote": "待补充苏教版资源，推荐人工审核后上线",
+    }
 
 
 def ensure_csv(path, headers):
@@ -232,7 +268,7 @@ def ability_status(correct, consecutive_wrong, consecutive_correct, rate, wrong_
 
 
 def append_video_recommendations(result):
-    headers = ["学生", "学科", "知识点ID", "知识点", "错误次数", "B站搜索链接", "公开课搜索关键词", "推荐用途"]
+    headers = ["学生", "学科", "知识点ID", "知识点", "错误次数", "教材版本", "年级", "B站搜索链接", "公开课搜索关键词", "资源状态", "推荐用途"]
     rows = read_csv(VIDEO_PATH, headers)
     existing = {(row["学生"], row["学科"], row["知识点ID"]) for row in rows}
     wrong_counts = {}
@@ -253,8 +289,11 @@ def append_video_recommendations(result):
             "知识点ID": item["knowledgeId"],
             "知识点": item["knowledgeName"],
             "错误次数": str(data["count"]),
+            "教材版本": item.get("textbookVersion", "苏教版"),
+            "年级": item.get("resourceGrade", "八年级"),
             "B站搜索链接": item["bilibiliLink"],
             "公开课搜索关键词": item["publicCourseKeyword"],
+            "资源状态": item.get("resourceStatus", "pending_review"),
             "推荐用途": "用于薄弱知识点讲解、同类题复盘和复测前预习",
         })
     write_csv(VIDEO_PATH, headers, rows)
@@ -275,7 +314,7 @@ def generate_tasks(payload):
     tasks = [{"知识点ID": row["知识点ID"], "知识点": row["知识点"], "状态": row["状态"], "任务类型": test_type} for row in rows]
     if allow_mastered and paper.get("questions"):
         known = {task["知识点ID"] for task in tasks}
-        for q in paper["questions"]:
+        for q in available_questions(paper):
             if q["knowledgeId"] not in known:
                 tasks.append({"知识点ID": q["knowledgeId"], "知识点": q["knowledge"], "状态": "新知识", "任务类型": test_type})
     return {"testType": test_type, "allowMastered": allow_mastered, "tasks": tasks}

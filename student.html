@@ -20,8 +20,9 @@
   <main class="shell">
     <section class="summary-strip"><div><span>试卷</span><strong id="paperNameText">数学第一轮诊断卷</strong></div><div><span>题量</span><strong id="questionCountText">0 题</strong></div><div><span>总分</span><strong id="totalScoreText">100 分</strong></div><div><span>人工阅卷</span><strong id="manualCountText">0 题</strong></div></section>
     <section class="mode-tabs" aria-label="操作模式"><button id="studentModeBtn" type="button" class="active">学生答题</button><button id="reviewModeBtn" type="button">家长阅卷</button></section>
-    <section id="studentPanel" class="work-panel"><div class="panel-head"><div><h2>学生答题区</h2><p>页面已内置完整题目，提交后自动阅卷。</p></div><div class="actions"><button id="saveBtn" type="button">保存答案</button><button id="submitBtn" type="button">提交并AI阅卷</button><button id="exportBtn" type="button">导出答题CSV</button></div></div><div id="questionList" class="question-list"></div></section>
+    <section id="studentPanel" class="work-panel"><div class="panel-head"><div><h2>学生答题区</h2><p>页面已内置完整题目，提交后自动阅卷。</p></div><div class="actions"><button id="saveBtn" type="button">保存答案</button><button id="submitBtn" type="button">提交并AI阅卷</button><button id="lastResultBtn" type="button">查看上次测试结果</button><button id="historyBtn" type="button">历史试卷</button><button id="exportBtn" type="button">导出答题CSV</button></div></div><div id="questionList" class="question-list"></div></section>
     <section id="studentResult" class="work-panel hidden"></section>
+    <section id="historyPanel" class="work-panel hidden"></section>
     <section id="reviewPanel" class="work-panel hidden"><div class="panel-head"><div><h2>家长阅卷区</h2><p>录入得分、错误类型和错误原因，用于导出薄弱点分析。</p></div><div class="actions"><button id="saveReviewBtn" type="button">保存阅卷</button><button id="exportReviewBtn" type="button">导出阅卷CSV</button><button id="exportSummaryBtn" type="button">导出薄弱点CSV</button></div></div><div id="reviewList" class="question-list"></div></section>
     <button id="clearBtn" type="button" class="danger">清空当前学生当前试卷数据</button>
   </main>

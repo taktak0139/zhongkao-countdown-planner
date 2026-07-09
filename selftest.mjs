@@ -2,8 +2,8 @@ import fs from "node:fs";
 import vm from "node:vm";
 
 const baseUrl = "http://192.168.1.129:8080";
-const abilityPath = "/Users/apple/作业/03_学生档案/学生能力库.csv";
-const videoPath = "/Users/apple/作业/06_视频资源库/薄弱知识点视频推荐.csv";
+const abilityPath = "./data/学生能力库.csv";
+const videoPath = "./data/薄弱知识点视频推荐.csv";
 const dataCode = fs.readFileSync("./data.js", "utf8");
 const appCode = fs.readFileSync("./app.js", "utf8");
 const studentHtml = fs.readFileSync("./student.html", "utf8");
@@ -13,6 +13,7 @@ vm.runInNewContext(`${dataCode}\nglobalThis.DIAGNOSIS_DATA = DIAGNOSIS_DATA;`, c
 
 const student = { id: "SELFTEST", name: "自测学生" };
 const paper = context.DIAGNOSIS_DATA.papers.find((item) => item.id === "PAPER-MATH-001");
+const physicsPaper = context.DIAGNOSIS_DATA.papers.find((item) => item.id === "PAPER-PHY-001");
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -28,7 +29,7 @@ function cleanSelftestRows(path) {
   const lines = fs.readFileSync(path, "utf8").split(/\r?\n/).filter(Boolean);
   if (!lines.length) return;
   const header = lines[0];
-  const kept = lines.slice(1).filter((line) => !line.includes("自测学生") && !line.includes("SELFTEST"));
+  const kept = lines.slice(1).filter((line) => !line.includes("自测学生") && !line.includes("SELFTEST") && !line.includes("物理边界自测"));
   fs.writeFileSync(path, [header, ...kept].join("\n") + "\n", "utf8");
 }
 
@@ -41,6 +42,20 @@ function csvRows(path) {
     const cells = line.split(",");
     return Object.fromEntries(headers.map((header, index) => [header, cells[index] || ""]));
   });
+}
+
+function difficultyLevel(question) {
+  if (Number.isFinite(Number(question.difficulty_level))) return Number(question.difficulty_level);
+  if (question.difficulty === "基础") return 1;
+  if (question.difficulty === "中档") return 2;
+  if (question.difficulty === "综合") return 3;
+  return 4;
+}
+
+function availableQuestions(paperItem) {
+  return [...paperItem.questions]
+    .filter((question) => question.is_available_for_grade8_summer !== false)
+    .sort((a, b) => difficultyLevel(a) - difficultyLevel(b) || Number(a.no) - Number(b.no));
 }
 
 async function postJson(path, payload) {
@@ -79,6 +94,9 @@ async function grade(name, answers, expected) {
     assert(item.bilibiliLink?.startsWith("https://search.bilibili.com/all?keyword="), `${name}: B站链接缺失`);
     assert(item.publicCourseKeyword, `${name}: 公开课关键词缺失`);
     assert(item.publicCourseLink, `${name}: 公开课链接缺失`);
+    assert(item.textbookVersion === "苏教版", `${name}: 教材版本不是苏教版`);
+    assert(item.resourceStatus === "pending_review", `${name}: 未确认资源没有标记为pending_review`);
+    assert(item.resourceTitle?.includes("苏教版八年级"), `${name}: 资源标题未适配苏教版八年级`);
   }
   expected(result);
   return result;
@@ -86,6 +104,13 @@ async function grade(name, answers, expected) {
 
 cleanSelftestRows(abilityPath);
 cleanSelftestRows(videoPath);
+
+assert(context.DIAGNOSIS_DATA.config?.learned_until === "初二下学期结束", "缺少初二下学期结束知识边界配置");
+const physicsAvailable = availableQuestions(physicsPaper);
+assert(!physicsAvailable.some((question) => ["P403", "P404"].includes(question.knowledgeId)), "物理可用测试仍包含初三电学内容");
+assert(physicsAvailable.every((question) => question.is_available_for_grade8_summer !== false), "物理可用题包含被排除题");
+assert(physicsAvailable.reduce((sum, question) => sum + Number(question.score || 0), 0) === 100, "物理初二可用试卷不是100分");
+assert(physicsAvailable.every((question, index, array) => index === 0 || difficultyLevel(array[index - 1]) <= difficultyLevel(question)), "物理题目未按由浅入深排序");
 
 const allCorrectAnswers = Object.fromEntries(paper.questions.map((question) => [question.no, fullAnswer(question)]));
 const partialAnswers = { ...allCorrectAnswers, "1": "B", "4": "x=5" };
@@ -114,7 +139,9 @@ assert(m002Ability?.["状态"] === "已掌握", "M002 未按规则进入已掌�
 const videoRows = csvRows(videoPath).filter((row) => row["学生"] === "自测学生");
 const m001Video = videoRows.find((row) => row["知识点ID"] === "M001");
 assert(m001Video?.["B站搜索链接"]?.startsWith("https://search.bilibili.com/all?keyword="), "M001 视频推荐未写入B站链接");
-assert(m001Video?.["公开课搜索关键词"]?.includes("初中数学有理数混合运算"), "M001 公开课关键词不正确");
+assert(m001Video?.["教材版本"] === "苏教版", "M001 视频推荐未写入苏教版字段");
+assert(m001Video?.["资源状态"] === "pending_review", "M001 视频推荐未标记pending_review");
+assert(m001Video?.["公开课搜索关键词"]?.includes("苏教版 八年级 初中 数学 有理数混合运算"), "M001 公开课关键词不正确");
 
 const dailyTasks = await postJson("/api/tasks", { studentId: "SELFTEST", subject: "数学", testType: "日常测试", paper });
 assert(dailyTasks.tasks.some((task) => task["知识点ID"] === "M001"), "日常任务未优先包含薄弱 M001");
@@ -147,6 +174,8 @@ assert(budgetResult.timelinePreserved === true, "预算调整破坏timeline标�
 assert(budgetResult.maxDailyMinutes <= 120, "预算调整后每日时长超过120");
 const progressAfterBudget = await postJson("/api/progress", { studentId: "S001", studentName: "李悦嘉" });
 assert(progressAfterBudget.budgetMinutes === 120, "预算调整后进度模型未读取新预算");
+const restoredBudget = await postJson("/api/budget", { budgetMinutes: 135 });
+assert(restoredBudget.budgetMinutes === 135, "自测后未恢复默认135分钟预算");
 
 assert(studentHtml.includes('id="studentResult"'), "学生端缺少AI阅卷结果区");
 assert(studentHtml.includes('id="submitBtn"'), "学生端缺少提交按钮");
@@ -154,6 +183,10 @@ assert(!studentHtml.includes("评分标准</summary>"), "学生端HTML考试中�
 assert(!appCode.includes("<details><summary>评分标准"), "答题渲染仍暴露评分标准");
 assert(appCode.includes("知识点简明讲解"), "学生端未渲染知识点讲解");
 assert(appCode.includes("推荐学习链接"), "学生端未渲染推荐学习链接");
+assert(appCode.includes("zhongkao_test_history"), "学生端未使用清晰的历史记录localStorage key");
+assert(studentHtml.includes("历史试卷"), "学生端缺少历史试卷入口");
+assert(studentHtml.includes("查看上次测试结果"), "学生端缺少上次测试结果入口");
+assert(appCode.includes("saveTestHistory"), "学生端提交后未保存历史测试记录");
 assert(appCode.includes("AI阅卷失败，请检查本地服务是否启动。"), "AI失败提示文案缺失");
 assert(parentHtml.includes('id="parentReport"'), "家长端缺少报告区");
 assert(parentHtml.includes('id="progressConsole"'), "家长端缺少进度控制台");
@@ -162,6 +195,9 @@ assert(appCode.includes("report.items.map(itemHtml)"), "家长端不是全部题
 assert(appCode.includes("8周知识热力图"), "家长端未渲染8周知识热力图");
 assert(appCode.includes("无锡中考基础平均线目标"), "家长端未渲染基础平均线目标");
 assert(appCode.includes("/api/budget"), "家长端未接入预算调整接口");
+
+cleanSelftestRows(abilityPath);
+cleanSelftestRows(videoPath);
 
 console.log(JSON.stringify({
   ok: true,
@@ -177,5 +213,10 @@ console.log(JSON.stringify({
   progressConsole: true,
   heatmap: true,
   budgetAdjust: true,
+  budgetRestored: true,
   studentFlowIntact: true
+  ,
+  gradeScope: true,
+  historyStorage: true,
+  sujiaoResources: true
 }, null, 2));

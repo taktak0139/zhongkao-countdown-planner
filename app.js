@@ -1,5 +1,8 @@
 const students = DIAGNOSIS_DATA.students;
 const papers = DIAGNOSIS_DATA.papers;
+const config = DIAGNOSIS_DATA.config || {};
+const resources = DIAGNOSIS_DATA.resources || [];
+const HISTORY_KEY = "zhongkao_test_history";
 const role = document.body.dataset.role || "entry";
 const state = { studentId: students[0].id, paperId: papers[0].id, startedAt: null, timerId: null, elapsedSeconds: 0 };
 
@@ -10,7 +13,24 @@ function currentStudent() {
 }
 
 function currentPaper() {
-  return papers.find((paper) => paper.id === state.paperId);
+  const paper = papers.find((item) => item.id === state.paperId);
+  if (!paper) return papers[0];
+  const questions = availableQuestions(paper);
+  return { ...paper, questions, totalScore: questions.reduce((sum, question) => sum + Number(question.score || 0), 0), resources };
+}
+
+function difficultyLevel(question) {
+  if (Number.isFinite(Number(question.difficulty_level))) return Number(question.difficulty_level);
+  if (question.difficulty === "基础") return 1;
+  if (question.difficulty === "中档") return 2;
+  if (question.difficulty === "综合") return 3;
+  return 4;
+}
+
+function availableQuestions(paper) {
+  return [...paper.questions]
+    .filter((question) => question.is_available_for_grade8_summer !== false)
+    .sort((a, b) => difficultyLevel(a) - difficultyLevel(b) || Number(a.no) - Number(b.no));
 }
 
 function resultKey(studentId = state.studentId, paperId = state.paperId) {
@@ -100,7 +120,8 @@ function renderQuestions() {
 }
 
 function metaHtml(question) {
-  return `<div class="q-meta"><span>${currentPaper().subject}</span><span>${question.score} 分</span><span>${question.knowledgeId}</span><span>${question.knowledge}</span><span>${question.type}</span><span>${question.difficulty}</span></div>`;
+  const scope = question.grade_scope || config.grade_scope || "初二升初三暑期";
+  return `<div class="q-meta"><span>${currentPaper().subject}</span><span>${question.score} 分</span><span>${question.knowledgeId}</span><span>${question.knowledge}</span><span>${question.type}</span><span>${question.difficulty}</span><span>${scope}</span></div>`;
 }
 
 async function submitForGrading() {
@@ -122,6 +143,7 @@ async function submitForGrading() {
     const result = await response.json();
     result.createdAt = new Date().toISOString();
     localStorage.setItem(resultKey(), JSON.stringify(result));
+    saveTestHistory(result, answers);
     $("storageStatus").textContent = "已完成阅卷";
     renderStudentResult(result);
   } catch {
@@ -154,16 +176,96 @@ function itemHtml(item) {
     <p><b>知识点简明讲解：</b>${item.knowledgeExplanation}</p>
     <p><b>知识点掌握情况：</b>${item.mastery}</p>
     <p><b>补救建议：</b>${item.suggestion}</p>
+    <p><b>教材版本：</b>${item.textbookVersion || "苏教版"}｜<b>资源标题：</b>${item.resourceTitle || `苏教版八年级${item.subject || ""}：${item.knowledgeName}`}</p>
+    <p><b>链接状态：</b>${item.resourceStatus === "available" ? "已审核可用" : "待补充苏教版资源，推荐人工审核后上线"}</p>
     <p><b>推荐学习链接：</b><a href="${item.bilibiliLink}" target="_blank" rel="noreferrer">B站搜索</a>｜<a href="${item.publicCourseLink}" target="_blank" rel="noreferrer">公开课搜索</a>｜关键词：${item.publicCourseKeyword}</p>
   </article>`;
 }
 
+function readHistory() {
+  try {
+    const rows = JSON.parse(localStorage.getItem(HISTORY_KEY)) || [];
+    return Array.isArray(rows) ? rows : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveTestHistory(result, answers) {
+  const wrongQuestions = result.items.filter((item) => item.score < item.fullScore).map((item) => ({
+    no: item.no,
+    knowledgeId: item.knowledgeId,
+    knowledge: item.knowledgeName,
+    score: item.score,
+    fullScore: item.fullScore,
+  }));
+  const weakKnowledge = [...new Map(wrongQuestions.map((item) => [item.knowledgeId, item])).values()].map((item) => ({
+    knowledgeId: item.knowledgeId,
+    knowledge: item.knowledge,
+  }));
+  const record = {
+    id: `${result.studentId}:${result.paperId}:${result.createdAt}`,
+    studentId: result.studentId,
+    studentName: result.studentName,
+    subject: result.subject,
+    paperId: result.paperId,
+    paperName: currentPaper().name,
+    submittedAt: result.createdAt,
+    answers,
+    totalScore: result.totalScore,
+    paperTotal: result.paperTotal,
+    result,
+    wrongQuestions,
+    weakKnowledge,
+  };
+  const history = [record, ...readHistory().filter((item) => item.id !== record.id)].slice(0, 80);
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+}
+
+function matchingHistory() {
+  return readHistory()
+    .filter((record) => record.studentId === state.studentId && record.subject === currentPaper().subject)
+    .sort((a, b) => String(b.submittedAt).localeCompare(String(a.submittedAt)));
+}
+
+function renderHistoryPanel(records, title) {
+  const panel = $("historyPanel");
+  if (!panel) return;
+  panel.classList.remove("hidden");
+  if (!records.length) {
+    panel.innerHTML = `<h2>${title}</h2><p class="empty">当前学生和学科暂无历史测试记录。</p>`;
+    return;
+  }
+  panel.innerHTML = `<h2>${title}</h2>${records.map((record) => `
+    <article class="result-card">
+      <strong>${record.studentName}｜${record.subject}｜${record.paperName || record.paperId}｜${record.totalScore}/${record.paperTotal}</strong>
+      <p>提交时间：${new Date(record.submittedAt).toLocaleString("zh-CN")}</p>
+      <p>错题：${record.wrongQuestions.length ? record.wrongQuestions.map((item) => `第${item.no}题 ${item.knowledge}`).join("、") : "无"}</p>
+      <button type="button" data-history-id="${record.id}">查看本次结果</button>
+    </article>
+  `).join("")}`;
+  panel.querySelectorAll("[data-history-id]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const record = readHistory().find((item) => item.id === button.dataset.historyId);
+      if (record?.result) renderStudentResult(record.result);
+    });
+  });
+}
+
+function showLastResult() {
+  renderHistoryPanel(matchingHistory().slice(0, 1), "上次测试结果");
+}
+
+function showHistory() {
+  renderHistoryPanel(matchingHistory(), "历史测试记录");
+}
+
 function renderParentReport() {
-  const reports = [];
+  const reports = readHistory().map((record) => record.result).filter(Boolean);
   students.forEach((student) => {
     papers.forEach((paper) => {
       const raw = localStorage.getItem(resultKey(student.id, paper.id));
-      if (raw) reports.push(JSON.parse(raw));
+      if (raw && !reports.some((report) => report.studentId === student.id && report.paperId === paper.id)) reports.push(JSON.parse(raw));
     });
   });
   $("parentReport").innerHTML = reports.length ? reports.map(reportHtml).join("") : "<p class='empty'>暂无测试结果。</p>";
@@ -270,6 +372,8 @@ function bindEvents() {
   $("startBtn")?.addEventListener("click", startTest);
   $("saveBtn")?.addEventListener("click", saveAnswers);
   $("submitBtn")?.addEventListener("click", submitForGrading);
+  $("lastResultBtn")?.addEventListener("click", showLastResult);
+  $("historyBtn")?.addEventListener("click", showHistory);
 }
 
 function startTest() {
