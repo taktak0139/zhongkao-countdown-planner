@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: 参与指南
+    url: https://github.com/taktak0139/zhongkao-countdown-planner/blob/main/CONTRIBUTING.md
+    about: 如果你不确定如何反馈，请先阅读参与指南。
+  - name: 项目路线图
+    url: https://github.com/taktak0139/zhongkao-countdown-planner/blob/main/ROADMAP.md
+    about: 查看项目当前阶段、近期计划和需要帮助的方向。
