@@ -4,7 +4,7 @@
 
 > 一个面向普通家庭的 AI 中考学习规划开源项目。
 
-![AI 中考倒计时充电规划](docs/images/readme.png)
+![AI 中考倒计时充电规划](docs/images/hero-v2.png)
 
 ---
 
