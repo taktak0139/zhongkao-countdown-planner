@@ -1,5 +1,6 @@
 import fs from "node:fs";
 import vm from "node:vm";
+import { spawnSync } from "node:child_process";
 
 const BASE_URL = process.env.TEST_BASE_URL || "http://127.0.0.1:8080";
 const abilityPath = "./data/学生能力库.csv";
@@ -10,6 +11,7 @@ const appCode = fs.readFileSync("./app.js", "utf8");
 const studentHtml = fs.readFileSync("./student.html", "utf8");
 const parentHtml = fs.readFileSync("./parent.html", "utf8");
 const reportsPath = "./reports";
+const logsPath = "./logs";
 const protectedDataPaths = [abilityPath, videoPath, dailyHistoryPath];
 const originalData = new Map(protectedDataPaths.map((path) => [path, fs.existsSync(path) ? fs.readFileSync(path) : null]));
 const originalReports = new Set(fs.existsSync(reportsPath) ? fs.readdirSync(reportsPath) : []);
@@ -239,6 +241,94 @@ assert(appCode.includes("/api/budget"), "家长端未接入预算调整接口");
 
 assert(fs.existsSync(reportsPath), "reports 目录不存在");
 assert(fs.readdirSync(reportsPath).some((name) => name.endsWith(".md")), "日报未正常生成");
+assert(fs.existsSync(logsPath), "logs 目录不存在");
+const openclawCheckCode = String.raw`
+import json, os, tempfile
+from pathlib import Path
+import server
+from tools import openclaw_sender as sender
+
+root = Path(tempfile.mkdtemp())
+report = root / "safe-report.md"
+report.write_text("# test", encoding="utf-8")
+sender.LOG_PATH = root / "logs" / "openclaw.log"
+
+os.environ["OPENCLAW_WECHAT_ENABLED"] = "0"
+os.environ["OPENCLAW_WEBHOOK_URL"] = "https://secret.invalid/token-value"
+os.environ["OPENCLAW_WECHAT_GROUP"] = ""
+disabled = sender.send_report(report)
+assert disabled["enabled"] is False and disabled["ok"] is False
+
+os.environ["OPENCLAW_WECHAT_ENABLED"] = "1"
+os.environ["OPENCLAW_WEBHOOK_URL"] = ""
+os.environ["OPENCLAW_WECHAT_GROUP"] = "test-group"
+missing_webhook = sender.send_report(report)
+assert missing_webhook["ok"] is False
+
+os.environ["OPENCLAW_WEBHOOK_URL"] = "https://secret.invalid/token-value"
+os.environ["OPENCLAW_WECHAT_GROUP"] = ""
+missing_group = sender.send_report(report)
+assert missing_group["ok"] is False
+log_text = sender.LOG_PATH.read_text(encoding="utf-8")
+assert "secret.invalid" not in log_text and "token-value" not in log_text and "# test" not in log_text
+
+server.REPORT_ROOT = root / "reports"
+server.DAILY_HISTORY_PATH = root / "data" / "history.csv"
+result = {
+    "studentId": "SAFE", "studentName": "../测试/学生", "paperId": "P1",
+    "paperName": "测试卷", "subject": "数学", "totalScore": 10, "paperTotal": 10,
+    "elapsedSeconds": 30, "submittedAt": "2026-07-10 12:00:00", "nextPlan": "巩固",
+    "items": [{"no": "1", "score": 10, "fullScore": 10, "knowledgeId": "M1",
+               "knowledgeName": "知识点", "studentAnswer": "A", "mastery": "掌握",
+               "deductionReason": "正确", "suggestion": "巩固"}],
+}
+first = server.persist_daily_report(result, {})
+second = server.persist_daily_report(result, {})
+assert first["path"] != second["path"]
+assert Path(first["path"]).parent == server.REPORT_ROOT
+assert Path(second["path"]).parent == server.REPORT_ROOT
+
+server.persist_learning_assets = lambda result: None
+server.persist_daily_completion = lambda result, plan: None
+server.persist_daily_report = lambda result, plan: {"path": "reports/test.md"}
+def fail_send(path):
+    raise RuntimeError("simulated")
+server.send_report = fail_send
+payload = {
+    "student": {"id": "T", "name": "T"},
+    "paper": {"id": "P", "name": "P", "subject": "数学", "questions": []},
+    "answers": {},
+}
+graded = server.grade(payload)
+assert graded["openclaw"]["ok"] is False
+
+print(json.dumps({
+    "openclawSenderModule": True,
+    "openclawDisabledSafe": True,
+    "openclawMissingWebhookSafe": True,
+    "openclawMissingGroupSafe": True,
+    "openclawLogSafe": True,
+    "reportDirectorySafe": True,
+    "reportFilenameNoOverwrite": True,
+    "submissionNotBlockedByOpenclawFailure": True,
+}))
+`;
+const senderCheck = spawnSync("python3", ["-c", openclawCheckCode], {
+  cwd: ".",
+  env: { ...process.env, OPENCLAW_WECHAT_ENABLED: "0" },
+  encoding: "utf8",
+});
+assert(senderCheck.status === 0, `OpenClaw 自测失败: ${senderCheck.stderr}`);
+const openclawChecks = JSON.parse(senderCheck.stdout.trim().split(/\r?\n/).at(-1));
+for (const [name, passed] of Object.entries(openclawChecks)) assert(passed, `${name} 未通过`);
+assert(fs.existsSync("./tools/send_latest_report.py"), "latestReportScriptExists 未通过");
+const disabledSend = spawnSync("python3", ["tools/send_latest_report.py"], {
+  cwd: ".",
+  env: { ...process.env, OPENCLAW_WECHAT_ENABLED: "0", OPENCLAW_WEBHOOK_URL: "" },
+  encoding: "utf8",
+});
+assert(disabledSend.status === 0, "OpenClaw 环境变量关闭时发生异常");
+assert(disabledSend.stdout.includes("OpenClaw 推送未开启"), "OpenClaw 关闭提示不正确");
 
 cleanSelftestRows(abilityPath);
 cleanSelftestRows(videoPath);
@@ -265,4 +355,9 @@ console.log(JSON.stringify({
   gradeScope: true,
   historyStorage: true,
   sujiaoResources: true
+  ,
+  openclawSender: true
+  ,
+  ...openclawChecks,
+  latestReportScriptExists: true
 }, null, 2));

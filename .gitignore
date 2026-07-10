@@ -2,3 +2,9 @@ __pycache__/
 *.pyc
 .DS_Store
 README.old.md
+.env
+.env.local
+.env.openclaw
+*.secret.env
+logs/
+*.log

@@ -2,10 +2,12 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 import csv
 import json
+import os
 import re
 from datetime import date, datetime
 from urllib.parse import quote
 
+from tools.openclaw_sender import send_report
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -141,6 +143,15 @@ def grade(payload):
     persist_learning_assets(result)
     persist_daily_completion(result, payload.get("dailyPlan") or {})
     result["dailyReport"] = persist_daily_report(result, payload.get("dailyPlan") or {})
+    try:
+        result["openclaw"] = send_report(BASE_DIR / result["dailyReport"]["path"])
+    except Exception as exc:
+        result["openclaw"] = {
+            "ok": False,
+            "enabled": os.environ.get("OPENCLAW_WECHAT_ENABLED") == "1",
+            "message": f"OpenClaw 推送已隔离：{exc.__class__.__name__}",
+            "status_code": None,
+        }
     return result
 
 
