@@ -157,7 +157,7 @@ textarea {
   top: 0;
   z-index: 10;
   display: grid;
-  grid-template-columns: 1fr 1fr 1.45fr auto;
+  grid-template-columns: minmax(180px, 0.9fr) minmax(260px, 1.7fr) auto auto;
   gap: 14px;
   align-items: end;
   padding: 14px 28px;
@@ -172,6 +172,27 @@ label {
   color: var(--muted);
   font-size: 15px;
   font-weight: 700;
+}
+
+.timeline-note {
+  display: grid;
+  gap: 7px;
+  min-height: 54px;
+  align-content: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fff;
+  padding: 8px 14px;
+}
+
+.timeline-note span {
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.timeline-note strong {
+  font-size: 17px;
 }
 
 .shell {
@@ -222,6 +243,10 @@ label {
   background: var(--panel);
   box-shadow: var(--shadow);
   padding: 22px;
+}
+
+.daily-plan-panel {
+  margin-bottom: 16px;
 }
 
 .hidden {
@@ -337,6 +362,31 @@ details {
   background: #fbfcfe;
   padding: 16px;
   margin-top: 12px;
+}
+
+.success-panel,
+.error-panel {
+  border-radius: 10px;
+  padding: 14px 16px;
+  margin: 12px 0;
+}
+
+.success-panel {
+  border: 1px solid #bbf7d0;
+  background: #f0fdf4;
+  color: #166534;
+}
+
+.error-panel {
+  border: 1px solid #fecaca;
+  background: #fef2f2;
+  color: var(--danger);
+}
+
+.success-panel h3,
+.success-panel p,
+.error-panel p {
+  margin: 6px 0;
 }
 
 .empty {

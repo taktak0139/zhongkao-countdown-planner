@@ -1,13 +1,18 @@
 import fs from "node:fs";
 import vm from "node:vm";
 
-const baseUrl = "http://192.168.1.129:8080";
+const BASE_URL = process.env.TEST_BASE_URL || "http://127.0.0.1:8080";
 const abilityPath = "./data/学生能力库.csv";
 const videoPath = "./data/薄弱知识点视频推荐.csv";
+const dailyHistoryPath = "./data/每日试卷历史记录.csv";
 const dataCode = fs.readFileSync("./data.js", "utf8");
 const appCode = fs.readFileSync("./app.js", "utf8");
 const studentHtml = fs.readFileSync("./student.html", "utf8");
 const parentHtml = fs.readFileSync("./parent.html", "utf8");
+const reportsPath = "./reports";
+const protectedDataPaths = [abilityPath, videoPath, dailyHistoryPath];
+const originalData = new Map(protectedDataPaths.map((path) => [path, fs.existsSync(path) ? fs.readFileSync(path) : null]));
+const originalReports = new Set(fs.existsSync(reportsPath) ? fs.readdirSync(reportsPath) : []);
 const context = {};
 vm.runInNewContext(`${dataCode}\nglobalThis.DIAGNOSIS_DATA = DIAGNOSIS_DATA;`, context);
 
@@ -32,6 +37,26 @@ function cleanSelftestRows(path) {
   const kept = lines.slice(1).filter((line) => !line.includes("自测学生") && !line.includes("SELFTEST") && !line.includes("物理边界自测"));
   fs.writeFileSync(path, [header, ...kept].join("\n") + "\n", "utf8");
 }
+
+function cleanSelftestReports() {
+  if (!fs.existsSync(reportsPath)) return;
+  for (const name of fs.readdirSync(reportsPath)) {
+    if (!originalReports.has(name) && name.includes("自测学生") && name.endsWith(".md")) fs.rmSync(`${reportsPath}/${name}`);
+  }
+}
+
+function restoreSelftestData() {
+  for (const [path, content] of originalData) {
+    if (content === null) {
+      if (fs.existsSync(path)) fs.rmSync(path);
+    } else {
+      fs.writeFileSync(path, content);
+    }
+  }
+  cleanSelftestReports();
+}
+
+process.on("exit", restoreSelftestData);
 
 function csvRows(path) {
   if (!fs.existsSync(path)) return [];
@@ -59,23 +84,37 @@ function availableQuestions(paperItem) {
 }
 
 async function postJson(path, payload) {
-  const response = await fetch(`${baseUrl}${path}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-  });
+  let response;
+  try {
+    response = await fetch(`${BASE_URL}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+  } catch {
+    console.error("无法连接测试服务器，请先启动 python3 server.py");
+    process.exit(1);
+  }
   assert(response.ok, `${path}: 接口未返回 200`);
   return response.json();
 }
 
 async function getText(path) {
-  const response = await fetch(`${baseUrl}${path}`);
+  let response;
+  try {
+    response = await fetch(`${BASE_URL}${path}`);
+  } catch {
+    console.error("无法连接测试服务器，请先启动 python3 server.py");
+    process.exit(1);
+  }
   assert(response.ok, `${path}: 页面打不开`);
   return response.text();
 }
 
 async function grade(name, answers, expected) {
   const result = await postJson("/api/grade", { student, paper, answers, elapsedSeconds: 90 });
+  assert(result.dailyReport?.path, `${name}: 未返回日报路径`);
+  assert(fs.existsSync(`./${result.dailyReport.path}`), `${name}: 日报文件未落盘`);
   assert(typeof result.totalScore === "number", `${name}: 缺少总分`);
   assert(result.elapsedSeconds === 90, `${name}: 用时未写入`);
   assert(result.items.length === paper.questions.length, `${name}: 每题结果数量不一致`);
@@ -104,6 +143,8 @@ async function grade(name, answers, expected) {
 
 cleanSelftestRows(abilityPath);
 cleanSelftestRows(videoPath);
+cleanSelftestRows(dailyHistoryPath);
+cleanSelftestReports();
 
 assert(context.DIAGNOSIS_DATA.config?.learned_until === "初二下学期结束", "缺少初二下学期结束知识边界配置");
 const physicsAvailable = availableQuestions(physicsPaper);
@@ -196,8 +237,13 @@ assert(appCode.includes("8周知识热力图"), "家长端未渲染8周知识热
 assert(appCode.includes("无锡中考基础平均线目标"), "家长端未渲染基础平均线目标");
 assert(appCode.includes("/api/budget"), "家长端未接入预算调整接口");
 
+assert(fs.existsSync(reportsPath), "reports 目录不存在");
+assert(fs.readdirSync(reportsPath).some((name) => name.endsWith(".md")), "日报未正常生成");
+
 cleanSelftestRows(abilityPath);
 cleanSelftestRows(videoPath);
+cleanSelftestRows(dailyHistoryPath);
+cleanSelftestReports();
 
 console.log(JSON.stringify({
   ok: true,

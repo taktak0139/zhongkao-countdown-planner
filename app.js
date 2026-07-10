@@ -4,7 +4,15 @@ const config = DIAGNOSIS_DATA.config || {};
 const resources = DIAGNOSIS_DATA.resources || [];
 const HISTORY_KEY = "zhongkao_test_history";
 const role = document.body.dataset.role || "entry";
-const state = { studentId: students[0].id, paperId: papers[0].id, startedAt: null, timerId: null, elapsedSeconds: 0 };
+const state = {
+  studentId: students[0].id,
+  paperId: papers[0].id,
+  startedAt: null,
+  timerId: null,
+  elapsedSeconds: 0,
+  dailyPlan: null,
+  dailyPaper: null,
+};
 
 const $ = (id) => document.getElementById(id);
 
@@ -13,6 +21,7 @@ function currentStudent() {
 }
 
 function currentPaper() {
+  if (state.dailyPaper) return state.dailyPaper;
   const paper = papers.find((item) => item.id === state.paperId);
   if (!paper) return papers[0];
   const questions = availableQuestions(paper);
@@ -42,13 +51,16 @@ function answerKey() {
 }
 
 function renderOptions() {
+  if (!$("studentSelect")) return;
   $("studentSelect").innerHTML = students.map((student) => `<option value="${student.id}">${student.name}</option>`).join("");
+  if (!$("subjectSelect")) return;
   const subjects = [...new Set(papers.map((paper) => paper.subject))];
   $("subjectSelect").innerHTML = subjects.map((subject) => `<option value="${subject}">${subject}</option>`).join("");
   renderPaperOptions();
 }
 
 function renderPaperOptions() {
+  if (!$("subjectSelect") || !$("paperSelect")) return;
   const subject = $("subjectSelect").value || papers[0].subject;
   const subjectPapers = papers.filter((paper) => paper.subject === subject);
   $("paperSelect").innerHTML = subjectPapers.map((paper) => `<option value="${paper.id}">${paper.name}</option>`).join("");
@@ -79,6 +91,71 @@ function renderSummary() {
   $("questionCountText").textContent = `${paper.questions.length} 题`;
   $("totalScoreText").textContent = `${paper.totalScore} 分`;
   $("manualCountText").textContent = "AI自动阅卷";
+}
+
+function createDailyPaper(plan) {
+  const source = papers.find((paper) => paper.subject === plan.quizSubject) || papers[0];
+  const targetIds = new Set((plan.quizTargets || []).map((item) => item.knowledgeId));
+  const targetQuestions = availableQuestions(source).filter((question) => targetIds.has(question.knowledgeId));
+  const fillerQuestions = availableQuestions(source).filter((question) => !targetIds.has(question.knowledgeId));
+  // Daily papers prioritize weak points, while preserving enough questions for
+  // a meaningful retest when only one weak point is due today.
+  const questions = [...targetQuestions, ...fillerQuestions].slice(0, Math.max(3, targetQuestions.length));
+  return {
+    ...source,
+    id: plan.quizId,
+    name: plan.quizTitle,
+    subject: plan.quizSubject,
+    questions,
+    totalScore: questions.reduce((sum, question) => sum + Number(question.score || 0), 0),
+    resources,
+  };
+}
+
+function renderDailyPlan(plan) {
+  const target = $("dailyPlanPanel");
+  if (!target) return;
+  const tasks = plan.tasks || [];
+  const taskHtml = tasks.length
+    ? `<ol>${tasks.map((task) => `<li><b>${task.任务类型}｜${task.学科}｜${task.知识点}</b><br>${task["45分钟任务内容"]}（预计 ${task.预计时长} 分钟）</li>`).join("")}</ol>`
+    : "<p>今天不安排新主线任务，请复盘本周错题并准备明天任务。</p>";
+  const retest = plan.quizTargets?.length
+    ? plan.quizTargets.map((item) => `${item.knowledge}（${item.status}${item.consecutiveWrong ? `，连续错${item.consecutiveWrong}次` : ""}）`).join("、")
+    : "暂无已记录的薄弱知识点，今日进行同学科基础巩固。";
+  target.innerHTML = `
+    <div class="panel-head"><div><h2>${plan.taskDate}｜第${plan.week}周${plan.weekday}</h2><p>${plan.stage}</p></div><div class="actions"><button id="reloadDailyBtn" type="button">刷新今日内容</button></div></div>
+    <p>${plan.message}</p>
+    <h3>今日主线任务</h3>${taskHtml}
+    <h3>今日滚动复测</h3><p>${retest}</p>
+    ${plan.completedToday ? "<p class='success-panel'>今天的滚动复测已提交。可在“历史试卷”查看结果，明天会自动切换至下一天任务。</p>" : ""}
+  `;
+  $("reloadDailyBtn")?.addEventListener("click", loadDailyPlan);
+  $("submitBtn").disabled = Boolean(plan.completedToday || !plan.isStudyDay);
+  if (plan.completedToday) $("storageStatus").textContent = "今日已提交";
+}
+
+async function loadDailyPlan() {
+  const target = $("dailyPlanPanel");
+  if (target) target.innerHTML = "<p class='empty'>正在按当天 timeline 加载任务...</p>";
+  try {
+    const response = await fetch("/api/daily-plan", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ studentId: state.studentId, studentName: currentStudent().name }),
+    });
+    if (!response.ok) throw new Error("daily plan failed");
+    const plan = await response.json();
+    state.dailyPlan = plan;
+    state.dailyPaper = createDailyPaper(plan);
+    state.paperId = state.dailyPaper.id;
+    renderDailyPlan(plan);
+    loadCurrent();
+  } catch {
+    state.dailyPlan = null;
+    state.dailyPaper = null;
+    if (target) target.innerHTML = "<p class='error-panel'>今日任务加载失败，请检查本地服务是否启动。</p>";
+    loadCurrent();
+  }
 }
 
 function renderQuestions() {
@@ -137,7 +214,13 @@ async function submitForGrading() {
     const response = await fetch("/api/grade", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ student: currentStudent(), paper: currentPaper(), answers, elapsedSeconds: state.elapsedSeconds }),
+      body: JSON.stringify({
+        student: currentStudent(),
+        paper: currentPaper(),
+        answers,
+        elapsedSeconds: state.elapsedSeconds,
+        dailyPlan: state.dailyPlan ? { taskDate: state.dailyPlan.taskDate, mode: "rolling_review" } : null,
+      }),
     });
     if (!response.ok) throw new Error("AI阅卷接口未启动");
     const result = await response.json();
@@ -146,6 +229,7 @@ async function submitForGrading() {
     saveTestHistory(result, answers);
     $("storageStatus").textContent = "已完成阅卷";
     renderStudentResult(result);
+    if (role === "student" && state.dailyPlan) loadDailyPlan();
   } catch {
     const message = "AI阅卷失败，请检查本地服务是否启动。";
     $("storageStatus").textContent = message;
@@ -159,8 +243,22 @@ async function submitForGrading() {
 
 function renderStudentResult(result) {
   $("studentResult").classList.remove("hidden");
-  $("studentResult").innerHTML = `<h2>阅卷结果：${result.totalScore} / ${result.paperTotal}</h2><p>用时：${formatDuration(result.elapsedSeconds || 0)}</p>${result.items.map(itemHtml).join("")}`;
+  $("studentResult").innerHTML = `<h2>阅卷结果：${result.totalScore} / ${result.paperTotal}</h2><p>用时：${formatDuration(result.elapsedSeconds || 0)}</p>${dailyReportHtml(result)}${result.items.map(itemHtml).join("")}`;
   $("studentResult").scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
+function dailyReportHtml(result) {
+  if (!result.dailyReport) return "";
+  const mastered = result.dailyReport.mastered?.length ? result.dailyReport.mastered.join("、") : "暂无";
+  const unmastered = result.dailyReport.unmastered?.length ? result.dailyReport.unmastered.join("、") : "暂无";
+  return `<section class="success-panel">
+    <h3>今日日结报告已生成</h3>
+    <p><b>已掌握：</b>${mastered}</p>
+    <p><b>未掌握：</b>${unmastered}</p>
+    <p><b>学习建议：</b>${result.dailyReport.advice}</p>
+    <p><a href="${result.dailyReport.url}" target="_blank" rel="noreferrer">打开日结报告</a></p>
+    <p>${result.dailyReport.wechatMessage || "微信群发送待配置。"}</p>
+  </section>`;
 }
 
 function itemHtml(item) {
@@ -366,9 +464,13 @@ function switchMode(mode) {
 }
 
 function bindEvents() {
-  $("studentSelect")?.addEventListener("change", (event) => { state.studentId = event.target.value; loadCurrent(); });
+  $("studentSelect")?.addEventListener("change", (event) => {
+    state.studentId = event.target.value;
+    if (role === "student") loadDailyPlan(); else loadCurrent();
+  });
   $("subjectSelect")?.addEventListener("change", () => { renderPaperOptions(); loadCurrent(); });
   $("paperSelect")?.addEventListener("change", (event) => { state.paperId = event.target.value; loadCurrent(); });
+  $("reloadDailyTopBtn")?.addEventListener("click", loadDailyPlan);
   $("startBtn")?.addEventListener("click", startTest);
   $("saveBtn")?.addEventListener("click", saveAnswers);
   $("submitBtn")?.addEventListener("click", submitForGrading);
@@ -414,7 +516,7 @@ function loadCurrent() {
 function initStudent() {
   renderOptions();
   bindEvents();
-  loadCurrent();
+  loadDailyPlan();
 }
 
 function initParent() {

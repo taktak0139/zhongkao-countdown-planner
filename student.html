@@ -13,13 +13,17 @@
   </header>
   <nav class="fixed-controls">
     <label>学生<select id="studentSelect"></select></label>
-    <label>学科<select id="subjectSelect"></select></label>
-    <label>试卷<select id="paperSelect"></select></label>
+    <div class="timeline-note">
+      <span>今日内容</span>
+      <strong>按真实日期自动切换主线任务与滚动复测</strong>
+    </div>
+    <button id="reloadDailyTopBtn" type="button">刷新今日内容</button>
     <button id="startBtn" type="button">开始测试</button>
   </nav>
   <main class="shell">
     <section class="summary-strip"><div><span>试卷</span><strong id="paperNameText">数学第一轮诊断卷</strong></div><div><span>题量</span><strong id="questionCountText">0 题</strong></div><div><span>总分</span><strong id="totalScoreText">100 分</strong></div><div><span>人工阅卷</span><strong id="manualCountText">0 题</strong></div></section>
     <section class="mode-tabs" aria-label="操作模式"><button id="studentModeBtn" type="button" class="active">学生答题</button><button id="reviewModeBtn" type="button">家长阅卷</button></section>
+    <section id="dailyPlanPanel" class="work-panel daily-plan-panel"></section>
     <section id="studentPanel" class="work-panel"><div class="panel-head"><div><h2>学生答题区</h2><p>页面已内置完整题目，提交后自动阅卷。</p></div><div class="actions"><button id="saveBtn" type="button">保存答案</button><button id="submitBtn" type="button">提交并AI阅卷</button><button id="lastResultBtn" type="button">查看上次测试结果</button><button id="historyBtn" type="button">历史试卷</button><button id="exportBtn" type="button">导出答题CSV</button></div></div><div id="questionList" class="question-list"></div></section>
     <section id="studentResult" class="work-panel hidden"></section>
     <section id="historyPanel" class="work-panel hidden"></section>

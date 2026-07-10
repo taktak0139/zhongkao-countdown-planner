@@ -3,8 +3,9 @@ from pathlib import Path
 import csv
 import json
 import re
-from datetime import datetime
+from datetime import date, datetime
 from urllib.parse import quote
+
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -13,14 +14,30 @@ ABILITY_PATH = DATA_ROOT / "学生能力库.csv"
 VIDEO_PATH = DATA_ROOT / "薄弱知识点视频推荐.csv"
 PLAN_PATH = DATA_ROOT / "学生暑期任务计划.csv"
 BUDGET_PATH = DATA_ROOT / "学习预算设置.csv"
+COMPLETION_PATH = DATA_ROOT / "学习任务完成记录.csv"
+DAILY_HISTORY_PATH = DATA_ROOT / "每日试卷历史记录.csv"
+REPORT_ROOT = BASE_DIR / "reports"
 DAILY_FILTER_TYPES = {"日常测试", "专项训练"}
 FULL_TEST_TYPES = {"月考", "终考", "综合模拟", "阶段大测"}
 PLAN_HEADERS = ["日期", "周次", "星期", "学生", "任务类型", "学科", "知识点ID", "知识点", "阶段", "45分钟任务内容", "是否主线任务", "是否补弱任务", "是否允许跳过", "任务来源", "预计时长"]
+COMPLETION_HEADERS = ["学生", "学生ID", "日期", "任务日期", "任务类型", "试卷ID", "学科", "得分", "总分", "提交时间"]
+DAILY_HISTORY_HEADERS = ["学生", "学生ID", "日期", "提交时间", "试卷ID", "试卷名称", "学科", "得分", "总分", "用时秒", "已掌握知识点", "未掌握知识点", "学习建议", "报告文件"]
+
+# 计划从 2026 年 7 月 6 日（周一）开始。CSV 中的“第X周周Y”由此映射到真实日期；
+# 这样不会再把第 1 天的静态内容当作每天的内容。
+TIMELINE_START_DATE = date(2026, 7, 6)
+STUDY_WEEKDAYS = ["周一", "周二", "周三", "周四", "周五", "周六"]
+TESTABLE_KNOWLEDGE = {
+    "数学": {"M001", "M002", "M106", "M109", "M203", "M303", "M403", "M407", "M409", "M501"},
+    "语文": {"Y101", "Y104", "Y201", "Y401", "Y105"},
+    "英语": {"E103", "E202", "E404", "E105", "E203", "E406"},
+    "物理": {"P002", "P004", "P106", "P203", "P205", "P208", "P301", "P302"},
+}
 
 
 class Handler(SimpleHTTPRequestHandler):
     def do_POST(self):
-        if self.path not in {"/api/grade", "/api/tasks", "/api/progress", "/api/budget"}:
+        if self.path not in {"/api/grade", "/api/tasks", "/api/progress", "/api/budget", "/api/daily-plan", "/api/daily-history"}:
             self.send_error(404)
             return
         length = int(self.headers.get("Content-Length", "0"))
@@ -31,6 +48,10 @@ class Handler(SimpleHTTPRequestHandler):
             result = generate_tasks(payload)
         elif self.path == "/api/progress":
             result = progress_dashboard(payload)
+        elif self.path == "/api/daily-plan":
+            result = daily_plan(payload)
+        elif self.path == "/api/daily-history":
+            result = daily_history(payload)
         else:
             result = apply_budget(payload)
         body = json.dumps(result, ensure_ascii=False).encode("utf-8")
@@ -101,10 +122,12 @@ def grade(payload):
             **resource_for(paper["subject"], q["knowledge"]),
         })
     weak_text = "、".join(dict.fromkeys(weak)) or "暂无明显薄弱点"
+    submitted_at = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     result = {
         "studentId": student["id"],
         "studentName": student["name"],
         "paperId": paper["id"],
+        "paperName": paper.get("name", paper["id"]),
         "subject": paper["subject"],
         "totalScore": total,
         "paperTotal": paper_total,
@@ -113,8 +136,11 @@ def grade(payload):
         "todayTask": f"优先复盘：{weak_text}。",
         "nextPlan": f"围绕 {weak_text} 安排基础讲解、同类训练和复测。",
         "trend": "已完成首轮诊断，后续趋势将在多次测试后生成。",
+        "submittedAt": submitted_at,
     }
     persist_learning_assets(result)
+    persist_daily_completion(result, payload.get("dailyPlan") or {})
+    result["dailyReport"] = persist_daily_report(result, payload.get("dailyPlan") or {})
     return result
 
 
@@ -297,6 +323,246 @@ def append_video_recommendations(result):
             "推荐用途": "用于薄弱知识点讲解、同类题复盘和复测前预习",
         })
     write_csv(VIDEO_PATH, headers, rows)
+
+
+def timeline_slot(on_date=None):
+    """Return the plan slot for a real calendar date.
+
+    Sunday is intentionally a review/rest day because the current 8-week plan
+    contains six study days per week. Dates before the plan starts are kept on
+    the first slot so families can preview the plan without advancing it.
+    """
+    on_date = on_date or date.today()
+    if on_date < TIMELINE_START_DATE:
+        return {"isStudyDay": True, "week": 1, "weekday": "周一", "date": on_date.isoformat(), "preview": True}
+    elapsed = (on_date - TIMELINE_START_DATE).days
+    week = elapsed // 7 + 1
+    weekday_index = elapsed % 7
+    if weekday_index == 6:
+        return {"isStudyDay": False, "week": min(week, 8), "weekday": "周日", "date": on_date.isoformat(), "preview": False}
+    return {
+        "isStudyDay": week <= 8,
+        "week": min(week, 8),
+        "weekday": STUDY_WEEKDAYS[weekday_index],
+        "date": on_date.isoformat(),
+        "preview": False,
+    }
+
+
+def completion_rows():
+    return read_csv(COMPLETION_PATH, COMPLETION_HEADERS)
+
+
+def persist_daily_completion(result, daily_plan):
+    """Record one submitted daily assessment per student/date, replacing retries."""
+    task_date = daily_plan.get("taskDate")
+    if not task_date or daily_plan.get("mode") != "rolling_review":
+        return
+    rows = completion_rows()
+    row = {
+        "学生": result["studentName"],
+        "学生ID": result["studentId"],
+        "日期": task_date,
+        "任务日期": task_date,
+        "任务类型": "每日滚动复测",
+        "试卷ID": result["paperId"],
+        "学科": result["subject"],
+        "得分": str(result["totalScore"]),
+        "总分": str(result["paperTotal"]),
+        "提交时间": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+    }
+    rows = [item for item in rows if not (item.get("学生ID") == result["studentId"] and item.get("日期") == task_date)]
+    write_csv(COMPLETION_PATH, COMPLETION_HEADERS, [row, *rows])
+
+
+def safe_filename(text):
+    cleaned = re.sub(r"[^\w\u4e00-\u9fff.-]+", "_", str(text or ""))
+    return cleaned.strip("._") or "report"
+
+
+def table_cell(text):
+    return str(text or "").replace("|", "｜").replace("\n", " ").strip()
+
+
+def mastery_groups(result):
+    mastered = []
+    unmastered = []
+    for item in result["items"]:
+        target = mastered if item["score"] >= item["fullScore"] * 0.9 else unmastered
+        target.append(f"{item['knowledgeId']} {item['knowledgeName']}")
+    return sorted(set(mastered)), sorted(set(unmastered))
+
+
+def persist_daily_report(result, daily_plan):
+    task_date = daily_plan.get("taskDate") or date.today().isoformat()
+    mastered, unmastered = mastery_groups(result)
+    advice = result["nextPlan"]
+    report_stem = safe_filename(f"{task_date}-{result['studentName']}")
+    REPORT_ROOT.mkdir(parents=True, exist_ok=True)
+
+    answer_rows = "\n".join(
+        "| {no} | {kid} {knowledge} | {answer} | {score}/{full} | {mastery} | {reason} |".format(
+            no=table_cell(item["no"]),
+            kid=table_cell(item["knowledgeId"]),
+            knowledge=table_cell(item["knowledgeName"]),
+            answer=table_cell(item["studentAnswer"]),
+            score=table_cell(item["score"]),
+            full=table_cell(item["fullScore"]),
+            mastery=table_cell(item["mastery"]),
+            reason=table_cell(item["deductionReason"]),
+        )
+        for item in result["items"]
+    )
+    mastered_text = "、".join(mastered) if mastered else "暂无"
+    unmastered_text = "、".join(unmastered) if unmastered else "暂无"
+    wrong_items = [item for item in result["items"] if item["score"] < item["fullScore"] * 0.9]
+    followups = "\n".join(f"- {item['knowledgeId']} {item['knowledgeName']}：{item['suggestion']}" for item in wrong_items) or "- 今天没有明显薄弱题，保持同类题巩固。"
+
+    title = f"{task_date} {result['studentName']} 日结报告"
+    report = f"""# {title}
+
+## 基本情况
+
+- 试卷：{result['paperName']}
+- 学科：{result['subject']}
+- 得分：{result['totalScore']} / {result['paperTotal']}
+- 用时：{result['elapsedSeconds']} 秒
+- 提交时间：{result['submittedAt']}
+
+## 今日回答与评分
+
+| 题号 | 知识点 | 学生答案 | 得分 | 掌握判断 | 评分情况 |
+| --- | --- | --- | --- | --- | --- |
+{answer_rows}
+
+## 知识点掌握情况
+
+- 已掌握：{mastered_text}
+- 未掌握：{unmastered_text}
+
+## 学习建议
+
+{followups}
+
+总体建议：{advice}
+"""
+    report_path = REPORT_ROOT / f"{report_stem}.md"
+    if report_path.exists():
+        timestamp = datetime.now().strftime("%H%M%S")
+        report_path = REPORT_ROOT / f"{report_stem}-{timestamp}.md"
+        sequence = 2
+        while report_path.exists():
+            report_path = REPORT_ROOT / f"{report_stem}-{timestamp}-{sequence}.md"
+            sequence += 1
+    report_path.write_text(report, encoding="utf-8")
+
+    try:
+        relative = report_path.relative_to(BASE_DIR).as_posix()
+        report_url = "/" + quote(relative, safe="/")
+    except ValueError:
+        relative = report_path.as_posix()
+        report_url = ""
+    rows = read_csv(DAILY_HISTORY_PATH, DAILY_HISTORY_HEADERS)
+    row = {
+        "学生": result["studentName"],
+        "学生ID": result["studentId"],
+        "日期": task_date,
+        "提交时间": result["submittedAt"],
+        "试卷ID": result["paperId"],
+        "试卷名称": result["paperName"],
+        "学科": result["subject"],
+        "得分": str(result["totalScore"]),
+        "总分": str(result["paperTotal"]),
+        "用时秒": str(result["elapsedSeconds"]),
+        "已掌握知识点": "、".join(mastered),
+        "未掌握知识点": "、".join(unmastered),
+        "学习建议": advice,
+        "报告文件": relative,
+    }
+    rows = [item for item in rows if not (item.get("学生ID") == result["studentId"] and item.get("日期") == task_date and item.get("试卷ID") == result["paperId"])]
+    write_csv(DAILY_HISTORY_PATH, DAILY_HISTORY_HEADERS, [row, *rows])
+    return {
+        "taskDate": task_date,
+        "path": relative,
+        "url": report_url,
+        "mastered": mastered,
+        "unmastered": unmastered,
+        "advice": advice,
+    }
+
+
+def daily_history(payload):
+    student_id = payload.get("studentId", "")
+    student_name = payload.get("studentName", "")
+    rows = read_csv(DAILY_HISTORY_PATH, DAILY_HISTORY_HEADERS)
+    if student_id or student_name:
+        rows = [
+            row for row in rows
+            if (student_id and row.get("学生ID") == student_id) or (student_name and row.get("学生") == student_name)
+        ]
+    return {"reports": rows[:120]}
+
+
+def daily_plan(payload):
+    """Build today's tasks from the timeline and the latest mastery state.
+
+    The timeline decides what should be learned today; the ability library
+    decides what must be retested today. This keeps a missed knowledge point in
+    the loop until it is actually mastered, instead of replaying a diagnosis
+    paper each time the page opens.
+    """
+    student_id = payload.get("studentId", "")
+    student_name = payload.get("studentName", "")
+    slot = timeline_slot()
+    week_text = f"第{slot['week']}周"
+    plan_rows = [
+        row for row in read_csv(PLAN_PATH, PLAN_HEADERS)
+        if row.get("学生") == student_name and row.get("周次") == week_text and row.get("星期") == slot["weekday"]
+    ] if slot["isStudyDay"] else []
+
+    abilities = [
+        row for row in read_csv(ABILITY_PATH, ["学生", "学生ID", "学科", "知识点ID", "知识点", "答题次数", "正确次数", "错误次数", "连续错误次数", "连续正确次数", "正确率", "状态", "最近更新时间"])
+        if row.get("学生ID") == student_id or row.get("学生") == student_name
+    ]
+    mainline_subject = next((row.get("学科") for row in plan_rows if row.get("是否主线任务") == "是"), "数学")
+    priority = {"重点薄弱": 1, "薄弱": 2, "改善中": 3, "未测试": 4}
+    candidates = [
+        row for row in abilities
+        if row.get("状态") != "已掌握" and row.get("知识点ID") in TESTABLE_KNOWLEDGE.get(row.get("学科", ""), set())
+    ]
+    # First retest the weak knowledge point in today's main subject. If none is
+    # available, keep a weak point from another subject moving rather than
+    # silently dropping it from the plan.
+    same_subject = [row for row in candidates if row.get("学科") == mainline_subject]
+    candidates = same_subject or candidates
+    candidates.sort(key=lambda row: (priority.get(row.get("状态"), 99), -int(row.get("连续错误次数") or 0), row.get("最近更新时间", "")))
+    quiz_subject = candidates[0].get("学科") if candidates else mainline_subject
+    quiz_targets = [
+        {"knowledgeId": row["知识点ID"], "knowledge": row["知识点"], "status": row["状态"], "consecutiveWrong": int(row.get("连续错误次数") or 0)}
+        for row in candidates if row.get("学科") == quiz_subject
+    ][:3]
+
+    completed = any(
+        row.get("学生ID") == student_id and row.get("日期") == slot["date"]
+        for row in completion_rows()
+    )
+    stage = plan_rows[0].get("阶段", "计划外复盘") if plan_rows else "周日复盘与休整"
+    return {
+        "taskDate": slot["date"],
+        "timelineStartDate": TIMELINE_START_DATE.isoformat(),
+        "week": slot["week"],
+        "weekday": slot["weekday"],
+        "isStudyDay": slot["isStudyDay"],
+        "isPreview": slot["preview"],
+        "stage": stage,
+        "tasks": plan_rows,
+        "quizSubject": quiz_subject,
+        "quizTargets": quiz_targets,
+        "quizId": f"DAILY-{slot['date']}-{student_id}-{quiz_subject}",
+        "quizTitle": f"{slot['date']}｜{quiz_subject}滚动复测",
+        "completedToday": completed,
+        "message": "今天是复盘与休整日，可查看错题解析；明天将自动切换到下一天任务。" if not slot["isStudyDay"] else "今日内容已按 timeline 更新：先完成主线任务，再完成未掌握知识点的滚动复测。",
+    }
 
 
 def generate_tasks(payload):
