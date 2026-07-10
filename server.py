@@ -11,6 +11,27 @@ from tools.openclaw_sender import send_report
 
 
 BASE_DIR = Path(__file__).resolve().parent
+
+
+def load_local_env(path):
+    """Load local key/value settings without overriding the process environment."""
+    if not path.is_file():
+        return
+    for raw_line in path.read_text(encoding="utf-8").splitlines():
+        line = raw_line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        key = key.strip()
+        value = value.strip()
+        if value[:1] == value[-1:] and value[:1] in {"'", '"'}:
+            value = value[1:-1]
+        if key:
+            os.environ.setdefault(key, value)
+
+
+load_local_env(BASE_DIR / ".env.openclaw")
+
 DATA_ROOT = BASE_DIR / "data"
 ABILITY_PATH = DATA_ROOT / "学生能力库.csv"
 VIDEO_PATH = DATA_ROOT / "薄弱知识点视频推荐.csv"
